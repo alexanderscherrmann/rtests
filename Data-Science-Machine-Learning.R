@@ -1245,3 +1245,270 @@ train_rf_2 <- train(y ~ .,
                     tuneGrid = data.frame(predFixed = 2, minNode = c(3, 50)),
                     data = mnist_27$train)
 confusionMatrix(predict(train_rf_2, mnist_27$test), mnist_27$test$y)$overall["Accuracy"]
+
+
+### exercise 5.1.2
+library(rpart)
+library(tidyverse)
+n <- 1000
+sigma <- 0.25
+set.seed(1)
+x <- rnorm(n, 0, 1)
+y <- 0.75 * x + rnorm(n, 0, sigma)
+dat <- data.frame(x = x, y = y)
+fit <- rpart(y ~ ., data = dat) 
+
+plot(fit)
+text(fit)
+
+dat %>% 
+  mutate(y_hat = predict(fit)) %>% 
+  ggplot() +
+  geom_point(aes(x, y)) +
+  geom_step(aes(x, y_hat), col=2)
+
+
+library(randomForest)
+fit <- randomForest(y ~ x, data = dat)
+dat %>% 
+  mutate(y_hat = predict(fit)) %>% 
+  ggplot() +
+  geom_point(aes(x, y)) +
+  geom_step(aes(x, y_hat), col = "red")
+
+plot(fit)
+  
+
+fit <- randomForest(y ~ x, data = dat, nodesize = 50, maxnodes = 25)
+dat %>% 
+  mutate(y_hat = predict(fit)) %>% 
+  ggplot() +
+  geom_point(aes(x, y)) +
+  geom_step(aes(x, y_hat), col = "red")
+
+
+
+library(dslabs)
+library(rpart)
+library(caret)
+data("tissue_gene_expression")
+dat <- tissue_gene_expression
+cp <- seq(0, 0.1, 0.01)
+
+set.seed(1991)
+fit <- train(y ~ ., method = "rpart",
+      tuneGrid = data.frame(cp = seq(0.0, 0.1, 0.01)),
+      data = dat)
+
+set.seed(1991) 
+
+fit <- with(tissue_gene_expression, 
+            train(x, y, method = "rpart",
+                  tuneGrid = data.frame(cp = seq(0, 0.1, 0.01))))
+
+confusionMatrix(fit)    
+ggplot(fit)
+
+
+set.seed(1991) 
+fit <- with(tissue_gene_expression, 
+            train(x, y, method = "rpart",
+              control = rpart.control(minsplit = 0),
+            tuneGrid = data.frame(cp = seq(0, 0.1, 0.01))))
+
+confusionMatrix(fit)    
+ggplot(fit)
+
+str(fit)
+
+set.seed(1991) 
+fit <- with(tissue_gene_expression, 
+            train(x, y, method = "rf",
+              nodesize = 1,
+              control = rpart.control(minsplit = 0),
+              tuneGrid = data.frame(mtry = seq(50, 200, 25))))
+
+
+ggplot(fit)
+
+
+### exercise 5.2
+
+library(titanic)    # loads titanic_train data frame
+library(caret)
+library(tidyverse)
+library(rpart)
+
+# 3 significant digits
+options(digits = 3)
+
+# clean the data - `titanic_train` is loaded with the titanic package
+titanic_clean <- titanic_train %>%
+  mutate(Survived = factor(Survived),
+         Embarked = factor(Embarked),
+         Age = ifelse(is.na(Age), median(Age, na.rm = TRUE), Age), # NA age to median age
+         FamilySize = SibSp + Parch + 1) %>%    # count family members
+  select(Survived,  Sex, Pclass, Age, Fare, SibSp, Parch, FamilySize, Embarked)
+
+tc <- titanic_clean
+set.seed(42)
+index <- createDataPartition(tc$Survived,times=1,p=0.2,list=FALSE)
+train <- tc[-index,]
+test <- tc[index,]
+nrow(train)
+nrow(test)
+mean(train$Survived==1)
+
+###
+set.seed(3)
+y_hat <- sample(c(0,1),nrow(train),replace=TRUE)
+mean(y_hat == train$Survived)
+
+###
+train %>%
+  group_by(Sex) %>%
+  summarize(Survived = mean(Survived == 1))
+
+
+#ftrain <- train %>% filter(Sex=="female")
+#mtrain <- train %>% filter(Sex=="male")
+#mean(ftrain$Survived==1)
+#mean(mtrain$Survived==1)     
+
+
+###
+#y_hat <- sapply(test$Sex,function(sex){
+#  ifelse(sex=="female",1,0)
+#})
+guess_sex <- ifelse(test$Sex=="female",1,0) %>%
+  factor(levels = levels(test$Survived))
+guess_sex
+mean(guess_sex == test$Survived)
+
+###
+train %>%
+  group_by(Pclass) %>%
+  summarize(Surv = mean(Survived == 1))
+
+###
+guess_class <- ifelse(test$Pclass==1,1,0) %>%
+  factor(levels = levels(test$Survived))
+guess_class
+mean(guess_class==test$Survived)
+
+###
+train %>%
+  group_by(Sex,Pclass) %>%
+  summarize(Surv = mean(Survived == 1))
+
+###
+guess_sex_class <- ifelse((test$Sex=="female") & (test$Pclass %in% c(1,2)),1,0) %>%
+  factor(levels = levels(test$Survived))
+mean(guess_sex_class == test$Survived)
+
+###
+cm_sex <- confusionMatrix(test$Survived,guess_sex)
+cm_class <- confusionMatrix(test$Survived, guess_class)
+cm_sex_class <- confusionMatrix(test$Survived, guess_sex_class)
+
+
+sensitivity(data = guess_sex, reference = test$Survived)
+sensitivity(data = guess_class, reference = test$Survived)
+sensitivity(data = guess_sex_class, reference = test$Survived)
+
+specificity(data = guess_sex, reference = test$Survived)
+specificity(data = guess_class, reference = test$Survived)
+specificity(data = guess_sex_class, reference = test$Survived)
+
+#cm_sex
+#cm_class#$overall[["Accuracy"]]
+#cm_sex_class#$overall[["Accuracy"]]
+
+confusionMatrix(data = factor(guess_sex), reference = factor(test$Survived))
+confusionMatrix(data = factor(guess_class), reference = factor(test$Survived))
+confusionMatrix(data = factor(guess_sex_class), reference = factor(test$Survived))
+
+
+###
+
+F_meas(data = guess_sex, reference = test$Survived)
+F_meas(data = guess_class, reference = test$Survived)
+F_meas(data = guess_sex_class, reference = test$Survived)
+
+###
+
+gamloess <- train(Survived ~ Fare, method="gamLoess",data=train)
+y_gamloess <- predict(gamloess,test)
+mean(y_gamloess==test$Survived)
+
+###
+
+glm <- train(Survived ~ Age, method="glm",data=train)
+y_glm <- predict(glm,test)
+mean(y_glm==test$Survived)
+
+
+SPAF <- train(Survived ~ Sex + Pclass + Age + Fare, method="glm",data=train)
+y_SPAF <- predict(SPAF,test)
+mean(y_SPAF==test$Survived)
+
+all <- train(Survived ~ ., method="glm",data=train)
+y_all <- predict(all,test)
+mean(y_all==test$Survived)
+
+
+###
+set.seed(6)
+
+knn <- train(Survived ~., method="knn",data=train,tuneGrid=data.frame(k = seq(3, 51, 2)))
+knn$bestTune
+ggplot(knn)
+
+###
+y_knn <- predict(knn,test)
+mean(y_knn == test$Survived)
+
+###
+set.seed(8)
+control <- trainControl(method = "cv", number = 10, p = .9)
+train_knn_cv <- train(Survived ~ ., method = "knn",
+                      data = train,
+                      tuneGrid = data.frame(k = seq(3, 51, 2)),
+                      trControl = control)
+ggplot(train_knn_cv, highlight = TRUE)
+names(train_knn_cv)
+
+y_cv_knn <- predict(train_knn_cv,test)
+mean(y_cv_knn==test$Survived)
+
+####
+####
+set.seed(10)
+tree <- train(Survived ~ .,
+      method="rpart",
+      tuneGrid=data.frame(cp = seq(0, 0.05, 0.002)),
+      data=train)
+
+#tree <- rpart(Survived ~ ., data = train)
+tree$bestTune
+y_tree <- predict(tree,test)
+mean(y_tree == test$Survived)
+
+plot(tree)
+text(tree)
+
+###
+set.seed(14)
+rf <- train(Survived ~.,
+            method="rf",
+            tuneGrid=data.frame(mtry=seq(1:7)),
+            ntree=100,
+            data=train
+            )
+
+rf$bestTune
+y_rf <- predict(rf,test)
+mean(y_rf==test$Survived)
+
+
+### Section 6
